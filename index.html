@@ -170,13 +170,6 @@
 
             console.log("User language:", userLanguage);
             
-            if (isIOS) {
-                let option = document.createElement("option");
-                option.value = "system";
-                option.innerHTML = "使用系统语音（建议）";
-                voiceSelect.appendChild(option);
-            }
-
             voices.forEach((voice, i) => {
                 // 检查语音是否匹配用户的语言环境
                 if (voice.lang.startsWith(languageCode)) {
@@ -188,7 +181,7 @@
             });
             
             // 如果没有匹配的语音，添加所有可用的语音
-            if (voiceSelect.options.length === (isIOS ? 1 : 0)) {
+            if (voiceSelect.options.length === 0) {
                 voices.forEach((voice, i) => {
                     let option = document.createElement("option");
                     option.value = i;
@@ -204,12 +197,6 @@
                 voiceSelect.appendChild(option);
             }
 
-            if (isIOS) {
-                let iosNote = document.createElement("p");
-                iosNote.innerHTML = "提示：iOS 用户可以使用系统的辅助功能获得更好的朗读体验。请在设置中开启 '语音选项' > '朗读所选内容'。";
-                document.getElementById("content").insertAdjacentElement('beforebegin', iosNote);
-            }
-
             console.log("Voices loaded:", voiceSelect.options.length);
         }
 
@@ -222,12 +209,6 @@
 
             const selectedVoice = document.getElementById("voiceSelect").value;
             
-            if (selectedVoice === "system") {
-                // 对于 iOS 设备，我们不实际播放，而是显示一个提示
-                alert("请使用系统的辅助功能来朗读文本。在设置中开启 '语音选项' > '朗读所选内容'，然后选择文本并使用系统提供的朗读功能。");
-                return;
-            }
-
             speech = new SpeechSynthesisUtterance(text);
             let voice = voices[selectedVoice];
             if (voice) {
