@@ -98,6 +98,7 @@
     <script>
         let speech = null;
         let isPaused = false;
+        let isPlaying = false; // 添加这行
         let currentIndex = 0;
         let contentParagraphs = [];
         let voices = [];
@@ -160,26 +161,19 @@
             voices = speechSynthesis.getVoices();
             let voiceSelect = document.getElementById("voiceSelect");
             voiceSelect.innerHTML = "";
-            let hasChineseVoice = false;
+            
+            // 检测是否为移动设备
+            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
             
             voices.forEach((voice, i) => {
-                if (voice.lang.includes('zh') || voice.lang.includes('cmn')) {
+                // 如果是移动设备，显示所有语音；否则只显示中文语音
+                if (isMobile || voice.lang.includes('zh') || voice.lang.includes('cmn')) {
                     let option = document.createElement("option");
                     option.value = i;
                     option.innerHTML = voice.name + ' (' + voice.lang + ')';
                     voiceSelect.appendChild(option);
-                    hasChineseVoice = true;
                 }
             });
-            
-            if (!hasChineseVoice) {
-                voices.forEach((voice, i) => {
-                    let option = document.createElement("option");
-                    option.value = i;
-                    option.innerHTML = voice.name + ' (' + voice.lang + ')';
-                    voiceSelect.appendChild(option);
-                });
-            }
             
             if (voiceSelect.options.length === 0) {
                 let option = document.createElement("option");
@@ -187,11 +181,15 @@
                 option.innerHTML = "没有可用的语音";
                 voiceSelect.appendChild(option);
             }
+            console.log("Voices loaded:", voices.length);
         }
 
         // 修改 speak 函数
         function speak(text) {
-            speechSynthesis.cancel();
+            console.log("Attempting to speak:", text);
+            if (speech) {
+                speechSynthesis.cancel();
+            }
             speech = new SpeechSynthesisUtterance(text);
             let selectedVoice = voices[document.getElementById("voiceSelect").value];
             if (selectedVoice) {
@@ -199,11 +197,45 @@
                 speech.lang = selectedVoice.lang;
             }
             speech.rate = currentSpeed;
+            speech.onstart = () => {
+                console.log("Speech started");
+                isPlaying = true;
+                isPaused = false;
+                updatePlayPauseButton();
+            };
             speech.onend = () => {
-                currentIndex++;
-                if (currentIndex < contentParagraphs.length) {
-                    speak(contentParagraphs[currentIndex].textContent);
+                console.log("Speech ended");
+                if (!isPaused) {
+                    currentIndex++;
+                    if (currentIndex < contentParagraphs.length) {
+                        speak(contentParagraphs[currentIndex].textContent);
+                    } else {
+                        isPlaying = false;
+                        speech = null;
+                        isPaused = false;
+                        updatePlayPauseButton();
+                    }
                 }
+            };
+            speech.onpause = () => {
+                console.log("Speech paused");
+                isPaused = true;
+                isPlaying = false;
+                updatePlayPauseButton();
+            };
+            speech.onresume = () => {
+                console.log("Speech resumed");
+                isPaused = false;
+                isPlaying = true;
+                updatePlayPauseButton();
+            };
+            speech.onerror = (event) => {
+                if (event.error !== 'interrupted') {
+                    console.error("Speech error:", event.error);
+                }
+                isPlaying = false;
+                isPaused = false;
+                updatePlayPauseButton();
             };
             speechSynthesis.speak(speech);
             updateBookmark();
@@ -303,16 +335,63 @@
             }
         });
 
-        document.getElementById('playPause').addEventListener('click', () => {
-            if (speech && !isPaused) {
+        // 修改 playPause 函数
+        function playPause() {
+            console.log("PlayPause called. isPlaying:", isPlaying, "isPaused:", isPaused);
+            if (!isPlaying && !speech) {
+                if (contentParagraphs.length > 0) {
+                    speak(contentParagraphs[currentIndex].textContent);
+                } else {
+                    console.log("No content to play");
+                }
+            } else if (isPlaying && !isPaused) {
                 speechSynthesis.pause();
                 isPaused = true;
-            } else if (speech && isPaused) {
+                isPlaying = false;
+            } else if (isPaused) {
                 speechSynthesis.resume();
                 isPaused = false;
-            } else {
-                speak(contentParagraphs[currentIndex].textContent);
+                isPlaying = true;
             }
+            updatePlayPauseButton();
+        }
+
+        // 新增更新播放/暂停按钮文本的函数
+        function updatePlayPauseButton() {
+            const playPauseButton = document.getElementById('playPause');
+            if (isPlaying && !isPaused) {
+                playPauseButton.textContent = '暂停';
+            } else {
+                playPauseButton.textContent = '播放';
+            }
+        }
+
+        // 修改段落点击事件
+        function setupParagraphListeners() {
+            contentParagraphs = document.getElementById('content').getElementsByTagName('p');
+            console.log("Setting up listeners for", contentParagraphs.length, "paragraphs");
+            Array.from(contentParagraphs).forEach((paragraph, index) => {
+                paragraph.addEventListener('click', () => {
+                    console.log("Paragraph clicked:", index);
+                    if (currentIndex !== index) {
+                        currentIndex = index;
+                        if (isPlaying) {
+                            speechSynthesis.cancel();
+                        }
+                        speak(paragraph.textContent);
+                    } else if (isPlaying) {
+                        playPause();
+                    } else {
+                        speak(paragraph.textContent);
+                    }
+                });
+            });
+        }
+
+        // 修改 playPause 按钮的事件监听器
+        document.getElementById('playPause').addEventListener('click', () => {
+            console.log("PlayPause button clicked");
+            playPause();
         });
 
         document.getElementById('voiceSelect').addEventListener('change', () => {
@@ -339,12 +418,14 @@
         document.getElementById('speedControl').value = currentSpeed;
         document.getElementById('speedValue').textContent = currentSpeed.toFixed(1) + 'x';
 
-        // 在文档加载完成后立即调用 loadVoices
+        // 在文档加载完成后初始化语音
         document.addEventListener('DOMContentLoaded', (event) => {
+            console.log("DOM content loaded");
             loadVoices();
             if (speechSynthesis.onvoiceschanged !== undefined) {
                 speechSynthesis.onvoiceschanged = loadVoices;
             }
+            // ... 其他初始化代码 ...
         });
 
         // 從 localStorage 恢復文件列表
@@ -372,7 +453,7 @@
             }
         }
 
-        // 在脚本的末��添加
+        // 在脚本的末添加
         document.getElementById('darkModeToggle').addEventListener('click', () => {
             document.body.classList.toggle('dark-mode');
             localStorage.setItem('darkMode', document.body.classList.contains('dark-mode'));
@@ -422,7 +503,7 @@
                 }
                 updateBookmarkInfo();
                 
-                // 保��文件内容到 localStorage
+                // 保文件内容到 localStorage
                 localStorage.setItem('fileContent_' + file.name, e.target.result);
             };
             reader.readAsText(file);
@@ -434,7 +515,11 @@
             Array.from(contentParagraphs).forEach((paragraph, index) => {
                 paragraph.addEventListener('click', () => {
                     currentIndex = index;
+                    if (isPlaying) {
+                        speechSynthesis.cancel();
+                    }
                     speak(paragraph.textContent);
+                    updatePlayPauseButton();
                 });
             });
         }
