@@ -64,10 +64,15 @@
         body.dark-mode #content p:hover {
             background-color: #555;
         }
+        #version {
+            font-size: 14px;
+            color: #666;
+            margin-left: 10px;
+        }
     </style>
 </head>
 <body>
-    <h1 id="pageTitle">小說閱讀器</h1>
+    <h1 id="pageTitle">小說閱讀 <span id="version"></span></h1>
     <input type="file" id="fileInput" accept=".txt,.md" multiple style="display: none;">
     <select id="fileSelect">
         <option value="">選擇檔案...</option>
@@ -100,6 +105,55 @@
         let bookmarks = JSON.parse(localStorage.getItem('bookmarks')) || {};
         let currentSpeed = parseFloat(localStorage.getItem('speechRate')) || 1;
         let fileList = [];
+
+        // 在脚本开头添加版本号变量
+        let version = localStorage.getItem('appVersion') || '1.0.0';
+        let lastCodeHash = localStorage.getItem('lastCodeHash') || '';
+
+        // 计算代码哈希的函数
+        async function calculateCodeHash() {
+            const response = await fetch(window.location.href);
+            const code = await response.text();
+            const encoder = new TextEncoder();
+            const data = encoder.encode(code);
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+        }
+
+        // 更新版本号的函数
+        function updateVersion() {
+            let [major, minor, patch] = version.split('.').map(Number);
+            patch += 1;
+            if (patch > 9) {
+                patch = 0;
+                minor += 1;
+            }
+            if (minor > 9) {
+                minor = 0;
+                major += 1;
+            }
+            version = `${major}.${minor}.${patch}`;
+            localStorage.setItem('appVersion', version);
+            document.getElementById('version').textContent = `v${version}`;
+        }
+
+        // 检查并更新版本的函数
+        async function checkAndUpdateVersion() {
+            const currentHash = await calculateCodeHash();
+            if (currentHash !== lastCodeHash) {
+                updateVersion();
+                lastCodeHash = currentHash;
+                localStorage.setItem('lastCodeHash', currentHash);
+            }
+            document.getElementById('version').textContent = `v${version}`;
+        }
+
+        // 在文档加载完成后检查并更新版本号
+        document.addEventListener('DOMContentLoaded', (event) => {
+            checkAndUpdateVersion();
+            // ... 其他初始化代码 ...
+        });
 
         // 替换现有的 loadVoices 函数
         function loadVoices() {
@@ -318,7 +372,7 @@
             }
         }
 
-        // 在脚本的末尾添加
+        // 在脚本的末��添加
         document.getElementById('darkModeToggle').addEventListener('click', () => {
             document.body.classList.toggle('dark-mode');
             localStorage.setItem('darkMode', document.body.classList.contains('dark-mode'));
@@ -368,7 +422,7 @@
                 }
                 updateBookmarkInfo();
                 
-                // 保存文件内容到 localStorage
+                // 保��文件内容到 localStorage
                 localStorage.setItem('fileContent_' + file.name, e.target.result);
             };
             reader.readAsText(file);
