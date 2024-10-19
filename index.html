@@ -169,6 +169,13 @@
             const languageCode = userLanguage.split('-')[0]; // 获取主要语言代码
 
             console.log("User language:", userLanguage);
+            console.log("Available voices:", voices);
+
+            // 添加"系统默认"选项
+            let defaultOption = document.createElement("option");
+            defaultOption.value = "default";
+            defaultOption.innerHTML = "系统默认语音";
+            voiceSelect.appendChild(defaultOption);
             
             voices.forEach((voice, i) => {
                 // 检查语音是否匹配用户的语言环境
@@ -181,7 +188,7 @@
             });
             
             // 如果没有匹配的语音，添加所有可用的语音
-            if (voiceSelect.options.length === 0) {
+            if (voiceSelect.options.length === 1) {
                 voices.forEach((voice, i) => {
                     let option = document.createElement("option");
                     option.value = i;
@@ -190,11 +197,17 @@
                 });
             }
             
-            if (voiceSelect.options.length === 0) {
+            if (voiceSelect.options.length === 1) {
                 let option = document.createElement("option");
                 option.value = "";
                 option.innerHTML = "没有可用的语音";
                 voiceSelect.appendChild(option);
+            }
+
+            if (isIOS) {
+                let iosNote = document.createElement("p");
+                iosNote.innerHTML = "提示：iOS 用户如果希望使用系统语音（如月、波波、甜甜等），请使用系统的辅助功能。在设置中开启 '辅助功能' > '朗读内容'，然后在网页上选择文本并使用系统提供的朗读功能。";
+                document.getElementById("content").insertAdjacentElement('beforebegin', iosNote);
             }
 
             console.log("Voices loaded:", voiceSelect.options.length);
@@ -210,10 +223,12 @@
             const selectedVoice = document.getElementById("voiceSelect").value;
             
             speech = new SpeechSynthesisUtterance(text);
-            let voice = voices[selectedVoice];
-            if (voice) {
-                speech.voice = voice;
-                speech.lang = voice.lang;
+            if (selectedVoice !== "default") {
+                let voice = voices[selectedVoice];
+                if (voice) {
+                    speech.voice = voice;
+                    speech.lang = voice.lang;
+                }
             }
             speech.rate = currentSpeed;
             speech.onstart = () => {
