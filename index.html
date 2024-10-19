@@ -53,6 +53,17 @@
             width: 200px;
             margin-right: 10px;
         }
+        /* 在现有样式后添加 */
+        body.dark-mode {
+            background-color: #333;
+            color: #f0f0f0;
+        }
+        body.dark-mode #content {
+            background-color: #444;
+        }
+        body.dark-mode #content p:hover {
+            background-color: #555;
+        }
     </style>
 </head>
 <body>
@@ -73,6 +84,10 @@
         <button id="jumpToBookmark">跳轉至書籤</button>
         <input type="range" id="speedControl" min="0.5" max="2" step="0.1" value="1">
         <span id="speedValue">1x</span>
+        <!-- 其他控制按钮 -->
+        <button id="darkModeToggle">夜間模式</button>
+        <button id="decreaseFont">A-</button>
+        <button id="increaseFont">A+</button>
     </div>
 
     <script>
@@ -86,61 +101,49 @@
         let currentSpeed = parseFloat(localStorage.getItem('speechRate')) || 1;
         let fileList = [];
 
+        // 替换现有的 loadVoices 函数
         function loadVoices() {
             voices = speechSynthesis.getVoices();
             let voiceSelect = document.getElementById("voiceSelect");
             voiceSelect.innerHTML = "";
+            let hasChineseVoice = false;
+            
             voices.forEach((voice, i) => {
-                if (voice.name.includes('Natural') && voice.name.toLowerCase().includes('chinese') && (voice.name.includes('Mainland')||voice.name.includes('Taiwan'))) {
+                if (voice.lang.includes('zh') || voice.lang.includes('cmn')) {
                     let option = document.createElement("option");
                     option.value = i;
                     option.innerHTML = voice.name + ' (' + voice.lang + ')';
                     voiceSelect.appendChild(option);
+                    hasChineseVoice = true;
                 }
             });
+            
+            if (!hasChineseVoice) {
+                voices.forEach((voice, i) => {
+                    let option = document.createElement("option");
+                    option.value = i;
+                    option.innerHTML = voice.name + ' (' + voice.lang + ')';
+                    voiceSelect.appendChild(option);
+                });
+            }
+            
             if (voiceSelect.options.length === 0) {
                 let option = document.createElement("option");
                 option.value = "";
-                option.innerHTML = "沒有可用的中文語音";
+                option.innerHTML = "没有可用的语音";
                 voiceSelect.appendChild(option);
             }
         }
 
-        speechSynthesis.onvoiceschanged = loadVoices;
-
-        function loadContent(file) {
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                const content = marked.parse(e.target.result);
-                document.getElementById('content').innerHTML = content;
-                setupParagraphListeners();
-                
-                const firstH1 = document.querySelector('#content h1');
-                if (firstH1) {
-                    document.title = firstH1.textContent;
-                    document.getElementById('pageTitle').textContent = firstH1.textContent;
-                }
-                updateBookmarkInfo();
-            };
-            reader.readAsText(file);
-        }
-
-        function setupParagraphListeners() {
-            contentParagraphs = document.getElementById('content').getElementsByTagName('p');
-            Array.from(contentParagraphs).forEach((paragraph, index) => {
-                paragraph.addEventListener('click', () => {
-                    currentIndex = index;
-                    speak(paragraph.textContent);
-                });
-            });
-        }
-
+        // 修改 speak 函数
         function speak(text) {
             speechSynthesis.cancel();
             speech = new SpeechSynthesisUtterance(text);
             let selectedVoice = voices[document.getElementById("voiceSelect").value];
-            speech.voice = selectedVoice;
-            speech.lang = selectedVoice.lang;
+            if (selectedVoice) {
+                speech.voice = selectedVoice;
+                speech.lang = selectedVoice.lang;
+            }
             speech.rate = currentSpeed;
             speech.onend = () => {
                 currentIndex++;
@@ -228,7 +231,19 @@
             const selectedIndex = event.target.value;
             if (selectedIndex !== '') {
                 currentFile = fileList[selectedIndex].name;
-                loadContent(fileList[selectedIndex]);
+                if (fileList[selectedIndex].size > 0) {
+                    loadContent(fileList[selectedIndex]);
+                } else {
+                    // 如果文件大小为 0，尝试从 localStorage 加载内容
+                    const savedContent = localStorage.getItem('fileContent_' + currentFile);
+                    if (savedContent) {
+                        document.getElementById('content').innerHTML = marked.parse(savedContent);
+                        setupParagraphListeners();
+                        updateBookmarkInfo();
+                    } else {
+                        document.getElementById('content').innerHTML = '请重新选择文件以加载内容。';
+                    }
+                }
                 localStorage.setItem('lastSelectedFile', currentFile);
             }
         });
@@ -269,7 +284,13 @@
         document.getElementById('speedControl').value = currentSpeed;
         document.getElementById('speedValue').textContent = currentSpeed.toFixed(1) + 'x';
 
-        loadVoices();
+        // 在文档加载完成后立即调用 loadVoices
+        document.addEventListener('DOMContentLoaded', (event) => {
+            loadVoices();
+            if (speechSynthesis.onvoiceschanged !== undefined) {
+                speechSynthesis.onvoiceschanged = loadVoices;
+            }
+        });
 
         // 從 localStorage 恢復文件列表
         const savedFileList = JSON.parse(localStorage.getItem('fileList')) || [];
@@ -284,11 +305,52 @@
             const fileIndex = fileList.findIndex(f => f.name === lastSelectedFile);
             if (fileIndex !== -1) {
                 document.getElementById('fileSelect').value = fileIndex;
-                // 注意：這裡我們不能直接加載內容，因為我們沒有實際的文件內容
-                // 我們需要提示用戶重新選擇文件
-                document.getElementById('content').innerHTML = '請重新選擇文件以加載內容。';
+                const savedContent = localStorage.getItem('fileContent_' + lastSelectedFile);
+                if (savedContent) {
+                    document.getElementById('content').innerHTML = marked.parse(savedContent);
+                    setupParagraphListeners();
+                    updateBookmarkInfo();
+                    currentFile = lastSelectedFile;
+                } else {
+                    document.getElementById('content').innerHTML = '请重新选择文件以加载内容。';
+                }
             }
         }
+
+        // 在脚本的末尾添加
+        document.getElementById('darkModeToggle').addEventListener('click', () => {
+            document.body.classList.toggle('dark-mode');
+            localStorage.setItem('darkMode', document.body.classList.contains('dark-mode'));
+        });
+
+        // 在页面加载时检查并应用夜间模式设置
+        if (localStorage.getItem('darkMode') === 'true') {
+            document.body.classList.add('dark-mode');
+        }
+
+        let fontSize = parseInt(localStorage.getItem('fontSize')) || 18;
+        
+        function updateFontSize() {
+            document.getElementById('content').style.fontSize = fontSize + 'px';
+            localStorage.setItem('fontSize', fontSize);
+        }
+
+        document.getElementById('decreaseFont').addEventListener('click', () => {
+            if (fontSize > 12) {
+                fontSize -= 2;
+                updateFontSize();
+            }
+        });
+
+        document.getElementById('increaseFont').addEventListener('click', () => {
+            if (fontSize < 30) {
+                fontSize += 2;
+                updateFontSize();
+            }
+        });
+
+        // 在页面加载时应用保存的字体大小
+        updateFontSize();
     </script>
 </body>
 </html>
