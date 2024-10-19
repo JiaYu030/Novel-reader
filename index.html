@@ -162,12 +162,24 @@
             let voiceSelect = document.getElementById("voiceSelect");
             voiceSelect.innerHTML = "";
             
-            // 检测是否为移动设备
-            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
             
+            // 获取用户的语言环境
+            const userLanguage = navigator.language || navigator.userLanguage;
+            const languageCode = userLanguage.split('-')[0]; // 获取主要语言代码
+
+            console.log("User language:", userLanguage);
+            
+            if (isIOS) {
+                let option = document.createElement("option");
+                option.value = "system";
+                option.innerHTML = "使用系统语音（建议）";
+                voiceSelect.appendChild(option);
+            }
+
             voices.forEach((voice, i) => {
-                // 如果是移动设备，显示所有语音；否则只显示中文语音
-                if (isMobile || voice.lang.includes('zh') || voice.lang.includes('cmn')) {
+                // 检查语音是否匹配用户的语言环境
+                if (voice.lang.startsWith(languageCode)) {
                     let option = document.createElement("option");
                     option.value = i;
                     option.innerHTML = voice.name + ' (' + voice.lang + ')';
@@ -175,13 +187,30 @@
                 }
             });
             
+            // 如果没有匹配的语音，添加所有可用的语音
+            if (voiceSelect.options.length === (isIOS ? 1 : 0)) {
+                voices.forEach((voice, i) => {
+                    let option = document.createElement("option");
+                    option.value = i;
+                    option.innerHTML = voice.name + ' (' + voice.lang + ')';
+                    voiceSelect.appendChild(option);
+                });
+            }
+            
             if (voiceSelect.options.length === 0) {
                 let option = document.createElement("option");
                 option.value = "";
                 option.innerHTML = "没有可用的语音";
                 voiceSelect.appendChild(option);
             }
-            console.log("Voices loaded:", voices.length);
+
+            if (isIOS) {
+                let iosNote = document.createElement("p");
+                iosNote.innerHTML = "提示：iOS 用户可以使用系统的辅助功能获得更好的朗读体验。请在设置中开启 '语音选项' > '朗读所选内容'。";
+                document.getElementById("content").insertAdjacentElement('beforebegin', iosNote);
+            }
+
+            console.log("Voices loaded:", voiceSelect.options.length);
         }
 
         // 修改 speak 函数
@@ -190,11 +219,20 @@
             if (speech) {
                 speechSynthesis.cancel();
             }
+
+            const selectedVoice = document.getElementById("voiceSelect").value;
+            
+            if (selectedVoice === "system") {
+                // 对于 iOS 设备，我们不实际播放，而是显示一个提示
+                alert("请使用系统的辅助功能来朗读文本。在设置中开启 '语音选项' > '朗读所选内容'，然后选择文本并使用系统提供的朗读功能。");
+                return;
+            }
+
             speech = new SpeechSynthesisUtterance(text);
-            let selectedVoice = voices[document.getElementById("voiceSelect").value];
-            if (selectedVoice) {
-                speech.voice = selectedVoice;
-                speech.lang = selectedVoice.lang;
+            let voice = voices[selectedVoice];
+            if (voice) {
+                speech.voice = voice;
+                speech.lang = voice.lang;
             }
             speech.rate = currentSpeed;
             speech.onstart = () => {
