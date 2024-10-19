@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>小說閱讀器</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        body {
+            font-family: "Microsoft JhengHei", "微軟正黑體", sans-serif;
+            line-height: 1.6;
+            padding: 10px;
+            max-width: 100%;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #333;
+            font-size: 24px;
+        }
+        #content {
+            background-color: #f9f9f9;
+            padding: 15px;
+            border-radius: 5px;
+            font-size: 18px;
+        }
+        #content p {
+            cursor: pointer;
+        }
+        #content p:hover {
+            background-color: #e0e0e0;
+        }
+        #controls {
+            position: fixed;
+            bottom: 10px;
+            left: 10px;
+            right: 10px;
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+        }
+        button, select, input[type="file"] {
+            font-size: 16px;
+            padding: 5px 10px;
+            margin: 5px;
+        }
+        #bookmarkInfo {
+            margin-top: 10px;
+        }
+        #fileSelect {
+            width: 200px;
+            margin-right: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1 id="pageTitle">小說閱讀器</h1>
+    <input type="file" id="fileInput" accept=".txt,.md" multiple style="display: none;">
+    <select id="fileSelect">
+        <option value="">選擇檔案...</option>
+    </select>
+    <button id="addFiles">添加檔案</button>
+    <button id="clearFiles">清空檔案列表</button>
+    <div id="bookmarkInfo"></div>
+    <div id="content">
+        請選擇一個文件開始閱讀...
+    </div>
+    <div id="controls">
+        <button id="playPause">播放 / 暫停</button>
+        <select id="voiceSelect"></select>
+        <button id="jumpToBookmark">跳轉至書籤</button>
+        <input type="range" id="speedControl" min="0.5" max="2" step="0.1" value="1">
+        <span id="speedValue">1x</span>
+    </div>
+
+    <script>
+        let speech = null;
+        let isPaused = false;
+        let currentIndex = 0;
+        let contentParagraphs = [];
+        let voices = [];
+        let currentFile = '';
+        let bookmarks = JSON.parse(localStorage.getItem('bookmarks')) || {};
+        let currentSpeed = parseFloat(localStorage.getItem('speechRate')) || 1;
+        let fileList = [];
+
+        function loadVoices() {
+            voices = speechSynthesis.getVoices();
+            let voiceSelect = document.getElementById("voiceSelect");
+            voiceSelect.innerHTML = "";
+            voices.forEach((voice, i) => {
+                if (voice.name.includes('Natural') && voice.name.toLowerCase().includes('chinese') && (voice.name.includes('Mainland')||voice.name.includes('Taiwan'))) {
+                    let option = document.createElement("option");
+                    option.value = i;
+                    option.innerHTML = voice.name + ' (' + voice.lang + ')';
+                    voiceSelect.appendChild(option);
+                }
+            });
+            if (voiceSelect.options.length === 0) {
+                let option = document.createElement("option");
+                option.value = "";
+                option.innerHTML = "沒有可用的中文語音";
+                voiceSelect.appendChild(option);
+            }
+        }
+
+        speechSynthesis.onvoiceschanged = loadVoices;
+
+        function loadContent(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const content = marked.parse(e.target.result);
+                document.getElementById('content').innerHTML = content;
+                setupParagraphListeners();
+                
+                const firstH1 = document.querySelector('#content h1');
+                if (firstH1) {
+                    document.title = firstH1.textContent;
+                    document.getElementById('pageTitle').textContent = firstH1.textContent;
+                }
+                updateBookmarkInfo();
+            };
+            reader.readAsText(file);
+        }
+
+        function setupParagraphListeners() {
+            contentParagraphs = document.getElementById('content').getElementsByTagName('p');
+            Array.from(contentParagraphs).forEach((paragraph, index) => {
+                paragraph.addEventListener('click', () => {
+                    currentIndex = index;
+                    speak(paragraph.textContent);
+                });
+            });
+        }
+
+        function speak(text) {
+            speechSynthesis.cancel();
+            speech = new SpeechSynthesisUtterance(text);
+            let selectedVoice = voices[document.getElementById("voiceSelect").value];
+            speech.voice = selectedVoice;
+            speech.lang = selectedVoice.lang;
+            speech.rate = currentSpeed;
+            speech.onend = () => {
+                currentIndex++;
+                if (currentIndex < contentParagraphs.length) {
+                    speak(contentParagraphs[currentIndex].textContent);
+                }
+            };
+            speechSynthesis.speak(speech);
+            updateBookmark();
+        }
+
+        function updateBookmark() {
+            if (currentFile && currentIndex < contentParagraphs.length) {
+                bookmarks[currentFile] = {
+                    index: currentIndex,
+                    text: contentParagraphs[currentIndex].textContent.substring(0, 20) + '...'
+                };
+                localStorage.setItem('bookmarks', JSON.stringify(bookmarks));
+                updateBookmarkInfo();
+            }
+        }
+
+        function updateBookmarkInfo() {
+            const bookmarkInfo = document.getElementById('bookmarkInfo');
+            if (bookmarks[currentFile]) {
+                bookmarkInfo.textContent = `當前書籤: ${bookmarks[currentFile].text}`;
+            } else {
+                bookmarkInfo.textContent = '沒有書籤';
+            }
+        }
+
+        function jumpToBookmark() {
+            if (bookmarks[currentFile]) {
+                currentIndex = bookmarks[currentFile].index;
+                speak(contentParagraphs[currentIndex].textContent);
+            }
+        }
+
+        function updateFileSelect() {
+            const fileSelect = document.getElementById('fileSelect');
+            fileSelect.innerHTML = '<option value="">選擇檔案...</option>';
+            fileList.forEach((file, index) => {
+                let option = document.createElement('option');
+                option.value = index;
+                option.textContent = file.name.replace(/\.[^/.]+$/, ""); // 移除文件擴展名
+                fileSelect.appendChild(option);
+            });
+            localStorage.setItem('fileList', JSON.stringify(fileList.map(f => ({name: f.name, lastModified: f.lastModified}))));
+        }
+
+        document.getElementById('addFiles').addEventListener('click', () => {
+            document.getElementById('fileInput').click();
+        });
+
+        document.getElementById('fileInput').addEventListener('change', (event) => {
+            const newFiles = Array.from(event.target.files);
+            newFiles.forEach(newFile => {
+                const existingIndex = fileList.findIndex(f => f.name === newFile.name);
+                if (existingIndex !== -1) {
+                    fileList[existingIndex] = newFile; // 替換同名文件
+                } else {
+                    fileList.push(newFile);
+                }
+            });
+            updateFileSelect();
+        });
+
+        document.getElementById('clearFiles').addEventListener('click', () => {
+            fileList = [];
+            updateFileSelect();
+            document.getElementById('content').innerHTML = '請選擇一個文件開始閱讀...';
+            if (speech) {
+                speechSynthesis.cancel();
+                speech = null;
+            }
+            localStorage.removeItem('lastSelectedFile');
+            document.getElementById('fileInput').value = ''; // 重置文件輸入
+        });
+
+        document.getElementById('fileSelect').addEventListener('change', (event) => {
+            if (speech) {
+                speechSynthesis.cancel();
+                speech = null;
+            }
+            const selectedIndex = event.target.value;
+            if (selectedIndex !== '') {
+                currentFile = fileList[selectedIndex].name;
+                loadContent(fileList[selectedIndex]);
+                localStorage.setItem('lastSelectedFile', currentFile);
+            }
+        });
+
+        document.getElementById('playPause').addEventListener('click', () => {
+            if (speech && !isPaused) {
+                speechSynthesis.pause();
+                isPaused = true;
+            } else if (speech && isPaused) {
+                speechSynthesis.resume();
+                isPaused = false;
+            } else {
+                speak(contentParagraphs[currentIndex].textContent);
+            }
+        });
+
+        document.getElementById('voiceSelect').addEventListener('change', () => {
+            if (speech) {
+                speechSynthesis.cancel();
+                speak(contentParagraphs[currentIndex].textContent);
+            }
+        });
+
+        document.getElementById('jumpToBookmark').addEventListener('click', jumpToBookmark);
+
+        document.getElementById('speedControl').addEventListener('input', (event) => {
+            currentSpeed = parseFloat(event.target.value);
+            document.getElementById('speedValue').textContent = currentSpeed.toFixed(1) + 'x';
+            localStorage.setItem('speechRate', currentSpeed);
+            if (speech) {
+                speech.rate = currentSpeed;
+                speechSynthesis.cancel();
+                speak(contentParagraphs[currentIndex].textContent);
+            }
+        });
+
+        // 初始化速度控制
+        document.getElementById('speedControl').value = currentSpeed;
+        document.getElementById('speedValue').textContent = currentSpeed.toFixed(1) + 'x';
+
+        loadVoices();
+
+        // 從 localStorage 恢復文件列表
+        const savedFileList = JSON.parse(localStorage.getItem('fileList')) || [];
+        if (savedFileList.length > 0) {
+            fileList = savedFileList.map(f => new File([new Blob()], f.name, { lastModified: f.lastModified, type: 'text/plain' }));
+            updateFileSelect();
+        }
+
+        // 如果有上次選擇的文件，自動選擇
+        const lastSelectedFile = localStorage.getItem('lastSelectedFile');
+        if (lastSelectedFile) {
+            const fileIndex = fileList.findIndex(f => f.name === lastSelectedFile);
+            if (fileIndex !== -1) {
+                document.getElementById('fileSelect').value = fileIndex;
+                // 注意：這裡我們不能直接加載內容，因為我們沒有實際的文件內容
+                // 我們需要提示用戶重新選擇文件
+                document.getElementById('content').innerHTML = '請重新選擇文件以加載內容。';
+            }
+        }
+    </script>
+</body>
+</html>
