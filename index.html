@@ -230,9 +230,10 @@
             }
             const selectedIndex = event.target.value;
             if (selectedIndex !== '') {
-                currentFile = fileList[selectedIndex].name;
-                if (fileList[selectedIndex].size > 0) {
-                    loadContent(fileList[selectedIndex]);
+                const selectedFile = fileList[selectedIndex];
+                currentFile = selectedFile.name;
+                if (selectedFile.size > 0) {
+                    loadContent(selectedFile);
                 } else {
                     // 如果文件大小为 0，尝试从 localStorage 加载内容
                     const savedContent = localStorage.getItem('fileContent_' + currentFile);
@@ -351,6 +352,60 @@
 
         // 在页面加载时应用保存的字体大小
         updateFontSize();
+
+        // 添加或替换 loadContent 函数
+        function loadContent(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const content = marked.parse(e.target.result);
+                document.getElementById('content').innerHTML = content;
+                setupParagraphListeners();
+                
+                const firstH1 = document.querySelector('#content h1');
+                if (firstH1) {
+                    document.title = firstH1.textContent;
+                    document.getElementById('pageTitle').textContent = firstH1.textContent;
+                }
+                updateBookmarkInfo();
+                
+                // 保存文件内容到 localStorage
+                localStorage.setItem('fileContent_' + file.name, e.target.result);
+            };
+            reader.readAsText(file);
+        }
+
+        // 确保 setupParagraphListeners 函数被定义
+        function setupParagraphListeners() {
+            contentParagraphs = document.getElementById('content').getElementsByTagName('p');
+            Array.from(contentParagraphs).forEach((paragraph, index) => {
+                paragraph.addEventListener('click', () => {
+                    currentIndex = index;
+                    speak(paragraph.textContent);
+                });
+            });
+        }
+
+        // 在文档加载完成后，尝试加载上次选择的文件
+        document.addEventListener('DOMContentLoaded', (event) => {
+            // ... 其他初始化代码 ...
+
+            const lastSelectedFile = localStorage.getItem('lastSelectedFile');
+            if (lastSelectedFile) {
+                const fileIndex = fileList.findIndex(f => f.name === lastSelectedFile);
+                if (fileIndex !== -1) {
+                    document.getElementById('fileSelect').value = fileIndex;
+                    const savedContent = localStorage.getItem('fileContent_' + lastSelectedFile);
+                    if (savedContent) {
+                        document.getElementById('content').innerHTML = marked.parse(savedContent);
+                        setupParagraphListeners();
+                        updateBookmarkInfo();
+                        currentFile = lastSelectedFile;
+                    } else {
+                        document.getElementById('content').innerHTML = '请重新选择文件以加载内容。';
+                    }
+                }
+            }
+        });
     </script>
 </body>
 </html>
